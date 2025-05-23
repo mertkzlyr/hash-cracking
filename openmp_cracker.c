@@ -8,8 +8,10 @@
 #define MAX_PASS_LEN 5
 #define ALPHABET "abcdefghijklmnopqrstuvwxyz0123456789"
 #define ALPHABET_SIZE 36
+#define CHUNK_SIZE 1000
 
-volatile int found = 0;
+int found = 0;
+char found_pass[MAX_PASS_LEN + 1] = {0};
 
 void index_to_password(unsigned long long idx, int length, char *pass)
 {
@@ -40,6 +42,7 @@ unsigned long long total_passwords(int len)
 
 int main(int argc, char **argv)
 {
+    printf("Program başladı\n");
     if (argc != 2)
     {
         printf("Usage: %s <hash>\n", argv[0]);
@@ -47,17 +50,19 @@ int main(int argc, char **argv)
     }
 
     const char *target = argv[1];
-    char found_pass[MAX_PASS_LEN + 1] = {0};
     found = 0;
+    memset(found_pass, 0, sizeof(found_pass));
 
     printf("Cracking: %s\n", target);
+    printf("Using %d threads\n", omp_get_max_threads());
     double start = omp_get_wtime();
 
     for (int len = 1; len <= MAX_PASS_LEN && !found; len++)
     {
         unsigned long long max = total_passwords(len);
+        printf("Trying length %d (%llu combinations)\n", len, max);
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic, CHUNK_SIZE) shared(found, found_pass, target)
         for (unsigned long long i = 0; i < max; i++)
         {
             if (found)
@@ -76,7 +81,7 @@ int main(int argc, char **argv)
                     {
                         strcpy(found_pass, pass);
                         found = 1;
-#pragma omp flush(found)
+                        printf("Thread %d found the password!\n", omp_get_thread_num());
                     }
                 }
             }
