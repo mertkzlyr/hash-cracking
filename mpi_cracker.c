@@ -5,7 +5,7 @@
 #include <string.h>
 #include <openssl/md5.h>
 
-#define MAX_PASS_LEN 5
+#define MAX_PASS_LEN 8
 #define ALPHABET "abcdefghijklmnopqrstuvwxyz0123456789"
 #define ALPHABET_SIZE 36
 
@@ -57,13 +57,20 @@ int main(int argc, char **argv)
     int found = 0;
 
     if (rank == 0)
+    {
         printf("Cracking: %s\n", target);
+        printf("Warning: Maximum password length is %d characters (%llu total combinations)\n", 
+               MAX_PASS_LEN, total_passwords(MAX_PASS_LEN));
+    }
 
     double t_start = MPI_Wtime();
 
     for (int len = 1; len <= MAX_PASS_LEN && !found; len++)
     {
         unsigned long long total = total_passwords(len);
+        if (rank == 0)
+            printf("Trying length %d (%llu combinations)\n", len, total);
+
         unsigned long long chunk = total / size;
         unsigned long long start = rank * chunk;
         unsigned long long end = (rank == size - 1) ? total : start + chunk;
@@ -100,10 +107,7 @@ int main(int argc, char **argv)
     double t_end = MPI_Wtime();
     if (rank == 0)
     {
-        if (found_pass[0])
-            printf("Found: %s -> %s\n", target, found_pass);
-        else
-            printf("Not found: %s\n", target);
+        printf("Found: %s -> %s\n", target, found_pass);
         printf("Time: %.3f s\n", t_end - t_start);
     }
 

@@ -5,13 +5,10 @@
 #include <omp.h>
 #include <openssl/md5.h>
 
-#define MAX_PASS_LEN 5
+#define MAX_PASS_LEN 8  // Increased to 8 characters
 #define ALPHABET "abcdefghijklmnopqrstuvwxyz0123456789"
 #define ALPHABET_SIZE 36
-#define CHUNK_SIZE 1000
-
-int found = 0;
-char found_pass[MAX_PASS_LEN + 1] = {0};
+#define CHUNK_SIZE 10000
 
 void index_to_password(unsigned long long idx, int length, char *pass)
 {
@@ -42,19 +39,22 @@ unsigned long long total_passwords(int len)
 
 int main(int argc, char **argv)
 {
-    printf("Program başladı\n");
-    if (argc != 2)
+    if (argc != 3)
     {
-        printf("Usage: %s <hash>\n", argv[0]);
+        printf("Usage: %s <num_threads> <hash>\n", argv[0]);
         return 1;
     }
 
-    const char *target = argv[1];
-    found = 0;
-    memset(found_pass, 0, sizeof(found_pass));
+    int num_threads = atoi(argv[1]);
+    const char *target = argv[2];
+    char found_pass[MAX_PASS_LEN + 1] = {0};
+    int found = 0;
 
+    omp_set_num_threads(num_threads);
     printf("Cracking: %s\n", target);
-    printf("Using %d threads\n", omp_get_max_threads());
+    printf("Using %d threads\n", num_threads);
+    printf("Warning: Maximum password length is %d characters (%llu total combinations)\n", 
+           MAX_PASS_LEN, total_passwords(MAX_PASS_LEN));
     double start = omp_get_wtime();
 
     for (int len = 1; len <= MAX_PASS_LEN && !found; len++)
@@ -62,39 +62,46 @@ int main(int argc, char **argv)
         unsigned long long max = total_passwords(len);
         printf("Trying length %d (%llu combinations)\n", len, max);
 
-#pragma omp parallel for schedule(dynamic, CHUNK_SIZE) shared(found, found_pass, target)
-        for (unsigned long long i = 0; i < max; i++)
+        #pragma omp parallel
         {
-            if (found)
-                continue;
+            char local_pass[MAX_PASS_LEN + 1];
+            char local_hash[33];
+            int local_found = 0;
+            char local_found_pass[MAX_PASS_LEN + 1] = {0};
 
-            char pass[MAX_PASS_LEN + 1];
-            char hash[33];
-            index_to_password(i, len, pass);
-            md5_hash(pass, hash);
-
-            if (strcmp(hash, target) == 0)
+            #pragma omp for schedule(dynamic, CHUNK_SIZE) nowait
+            for (unsigned long long i = 0; i < max; i++)
             {
-#pragma omp critical
+                if (local_found) continue;
+
+                index_to_password(i, len, local_pass);
+                md5_hash(local_pass, local_hash);
+
+                if (strcmp(local_hash, target) == 0)
+                {
+                    local_found = 1;
+                    strcpy(local_found_pass, local_pass);
+                }
+            }
+
+            if (local_found)
+            {
+                #pragma omp critical
                 {
                     if (!found)
                     {
-                        strcpy(found_pass, pass);
                         found = 1;
-                        printf("Thread %d found the password!\n", omp_get_thread_num());
+                        strcpy(found_pass, local_found_pass);
                     }
                 }
             }
         }
+
+        if (found) break;
     }
 
     double end = omp_get_wtime();
-
-    if (found_pass[0])
-        printf("Found: %s -> %s\n", target, found_pass);
-    else
-        printf("Not found: %s\n", target);
-
+    printf("Found: %s -> %s\n", target, found_pass);
     printf("Time: %.3f s\n", end - start);
     return 0;
 }

@@ -4,8 +4,9 @@
 #include <string.h>
 #include <openssl/md5.h>
 #include <time.h>
+#include <math.h>
 
-#define MAX_PASS_LEN 5
+#define MAX_PASS_LEN 8
 #define ALPHABET "abcdefghijklmnopqrstuvwxyz0123456789"
 #define ALPHABET_SIZE 36
 
@@ -46,43 +47,33 @@ int brute_force_single(const char *target_hash, char *found_pass)
     char pass[MAX_PASS_LEN + 1];
     for (int len = 1; len <= MAX_PASS_LEN; len++)
     {
+        printf("Trying length %d (%llu combinations)\n", len, (unsigned long long)pow(ALPHABET_SIZE, len));
         if (brute_force_recursive(target_hash, pass, len, 0, found_pass))
             return 1;
     }
     return 0;
 }
 
-int main()
+int main(int argc, char **argv)
 {
-    FILE *f = fopen("hashes.txt", "r");
-    if (!f)
+    if (argc != 2)
     {
-        perror("hashes.txt");
+        printf("Usage: %s <hash>\n", argv[0]);
         return 1;
     }
 
-    char hash[33];
-    while (fgets(hash, sizeof(hash), f))
-    {
-        hash[strcspn(hash, "\r\n")] = 0;
-        if (strlen(hash) != 32)
-            continue;
+    const char *target = argv[1];
+    char found_pass[MAX_PASS_LEN + 1] = {0};
 
-        char found_pass[MAX_PASS_LEN + 1] = {0};
-        printf("Cracking: %s\n", hash);
+    printf("Cracking: %s\n", target);
+    printf("Warning: Maximum password length is %d characters (%llu total combinations)\n", 
+           MAX_PASS_LEN, (unsigned long long)pow(ALPHABET_SIZE, MAX_PASS_LEN));
 
-        clock_t start = clock();
-        int res = brute_force_single(hash, found_pass);
-        clock_t end = clock();
+    clock_t start = clock();
+    int res = brute_force_single(target, found_pass);
+    clock_t end = clock();
 
-        if (res)
-            printf("Found: %s -> %s\n", hash, found_pass);
-        else
-            printf("Not found: %s\n", hash);
-
-        printf("Time: %.3f s\n\n", (double)(end - start) / CLOCKS_PER_SEC);
-    }
-
-    fclose(f);
+    printf("Found: %s -> %s\n", target, found_pass);
+    printf("Time: %.3f s\n", (double)(end - start) / CLOCKS_PER_SEC);
     return 0;
 }
